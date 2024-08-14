@@ -22,9 +22,9 @@ st.title("Enhanced Object Detection")
 
 # Sidebar
 st.sidebar.header("Settings")
-option = st.sidebar.selectbox("Choose an Option", ["Webcam Detection", "Image Upload"])
+option = st.sidebar.selectbox("Choose an Option", ["Video Upload", "Image Upload"])
 
-# Create a placeholder for video frames and object counts
+# Create placeholders for video frames and object counts
 stframe = st.empty()
 count_placeholder = st.empty()
 
@@ -54,51 +54,46 @@ def detect_objects(frame):
 
     return frame, object_counts
 
-if option == "Webcam Detection":
-    st.sidebar.write("## Webcam Detection")
-    
-    if st.sidebar.button("Start Webcam"):
-        cap = cv2.VideoCapture(0)  # Open webcam
-        
-        if not cap.isOpened():
-            st.error("Error: Could not open webcam.")
-        else:
-            st.write("Webcam started. Click 'Stop Webcam' to stop.")
-            count_placeholder.write("Detected Objects (Webcam):")
+if option == "Video Upload":
+    st.sidebar.write("## Video Upload")
 
-            # Button to stop webcam
-            if st.sidebar.button("Stop Webcam"):
-                st.write("Stopping webcam...")
-                cap.release()
-                stframe.empty()
-                count_placeholder.empty()
-            else:
-                # Loop to read frames from the webcam
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.warning("Warning: Could not read frame from webcam.")
-                        break
+    uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "avi", "mov"])
 
-                    # Detect objects
-                    frame, object_counts = detect_objects(frame)
+    if uploaded_video is not None:
+        # Save the uploaded video to a temporary file
+        video_temp_path = 'temp_video.mp4'
+        with open(video_temp_path, 'wb') as f:
+            f.write(uploaded_video.read())
 
-                    # Convert the image from BGR to RGB for Streamlit
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Open the video file using OpenCV
+        cap = cv2.VideoCapture(video_temp_path)
 
-                    # Display the resulting frame in Streamlit
-                    stframe.image(frame_rgb, channels="RGB")
+        stframe = st.empty()
 
-                    # Display object counts
-                    count_placeholder.write("Detected Objects (Webcam):")
-                    for label, count in object_counts.items():
-                        if count > 0:
-                            count_placeholder.write(f"{label}: {count}")
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-                # Release the capture
-                cap.release()
-                stframe.empty()
-                count_placeholder.empty()
+            # Detect objects
+            frame, object_counts = detect_objects(frame)
+
+            # Convert the image from BGR to RGB for Streamlit
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Display the resulting frame in Streamlit
+            stframe.image(frame_rgb, channels="RGB")
+
+            # Display object counts
+            count_placeholder.write("Detected Objects (Video):")
+            for label, count in object_counts.items():
+                if count > 0:
+                    count_placeholder.write(f"{label}: {count}")
+
+        # Release the capture
+        cap.release()
+        stframe.empty()
+        count_placeholder.empty()
 
 elif option == "Image Upload":
     st.sidebar.write("## Image Upload")
@@ -124,3 +119,4 @@ elif option == "Image Upload":
         for label, count in object_counts.items():
             if count > 0:
                 st.write(f"{label}: {count}")
+

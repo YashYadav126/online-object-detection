@@ -2,11 +2,11 @@ import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
+import base64
 
 # Paths to the model files
 prototxt_path = 'deploy.prototxt'
 caffemodel_path = 'mobilenet_iter_73000.caffemodel'
-
 
 # Load the pre-trained MobileNet SSD model
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
@@ -21,13 +21,70 @@ class_labels = [
 # Streamlit App
 st.title("Enhanced Object Detection")
 
-# Sidebar
-st.sidebar.header("Settings")
-option = st.sidebar.selectbox("Choose an Option", ["Webcam Detection", "Image Upload"])
+# Define HTML for webcam capture
+webcam_html = """
+<script>
+    let video;
+    let canvas;
+    let context;
+    let stream;
 
-# Create a placeholder for video frames and object counts
-stframe = st.empty()
-count_placeholder = st.empty()
+    function startWebcam() {
+        video = document.createElement('video');
+        canvas = document.createElement('canvas');
+        context = canvas.getContext('2d');
+        
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(s) {
+                stream = s;
+                video.srcObject = stream;
+                video.play();
+                document.getElementById('webcam-container').appendChild(video);
+                requestAnimationFrame(updateFrame);
+            })
+            .catch(function(err) {
+                console.log("Error: " + err);
+            });
+    }
+
+    function updateFrame() {
+        if (video) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let dataURL = canvas.toDataURL('image/jpeg');
+            fetch('/upload_frame', {
+                method: 'POST',
+                body: JSON.stringify({ image: dataURL }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Process detection results here
+            });
+            requestAnimationFrame(updateFrame);
+        }
+    }
+
+    function stopWebcam() {
+        if (stream) {
+            let tracks = stream.getTracks();
+            tracks.forEach(track => track.stop());
+        }
+        video.remove();
+        canvas.remove();
+    }
+</script>
+<div id="webcam-container">
+    <button onclick="startWebcam()">Start Webcam</button>
+    <button onclick="stopWebcam()">Stop Webcam</button>
+</div>
+"""
+
+# Streamlit app layout
+st.markdown(webcam_html, unsafe_allow_html=True)
 
 def detect_objects(frame):
     """Detect objects in the given frame."""
@@ -55,73 +112,38 @@ def detect_objects(frame):
 
     return frame, object_counts
 
-if option == "Webcam Detection":
-    st.sidebar.write("## Webcam Detection")
-    
-    if st.sidebar.button("Start Webcam"):
-        cap = cv2.VideoCapture(0)  # Open webcam
-        
-        if not cap.isOpened():
-            st.error("Error: Could not open webcam.")
-        else:
-            st.write("Webcam started. Click 'Stop Webcam' to stop.")
-            count_placeholder.write("Detected Objects (Webcam):")
+# Handle incoming frames
+def handle_frame():
+    import base64
+    import io
+    from flask import Flask, request, jsonify
 
-            # Button to stop webcam
-            if st.sidebar.button("Stop Webcam"):
-                st.write("Stopping webcam...")
-                cap.release()
-                stframe.empty()
-                count_placeholder.empty()
-            else:
-                # Loop to read frames from the webcam
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.warning("Warning: Could not read frame from webcam.")
-                        break
+    app = Flask(__name__)
 
-                    # Detect objects
-                    frame, object_counts = detect_objects(frame)
-
-                    # Convert the image from BGR to RGB for Streamlit
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                    # Display the resulting frame in Streamlit
-                    stframe.image(frame_rgb, channels="RGB")
-
-                    # Display object counts
-                    count_placeholder.write("Detected Objects (Webcam):")
-                    for label, count in object_counts.items():
-                        if count > 0:
-                            count_placeholder.write(f"{label}: {count}")
-
-                # Release the capture
-                cap.release()
-                stframe.empty()
-                count_placeholder.empty()
-
-elif option == "Image Upload":
-    st.sidebar.write("## Image Upload")
-
-    uploaded_image = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
-
-    if uploaded_image is not None:
-        # Load the image using PIL
-        image = Image.open(uploaded_image)
-        image = np.array(image)
+    @app.route('/upload_frame', methods=['POST'])
+    def upload_frame():
+        data = request.json
+        image_data = data['image']
+        image_data = image_data.split(",")[1]  # Remove the data URL prefix
+        image_data = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_data))
+        frame = np.array(image)
 
         # Detect objects
-        image, object_counts = detect_objects(image)
+        frame, object_counts = detect_objects(frame)
 
-        # Convert the image from BGR to RGB for Streamlit
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Convert the image from BGR to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        _, buffer = cv2.imencode('.jpg', frame_rgb)
+        jpg_as_text = base64.b64encode(buffer).decode('utf-8')
 
-        # Display the resulting image in Streamlit
-        st.image(image_rgb, channels="RGB")
+        return jsonify({
+            'image': jpg_as_text,
+            'counts': object_counts
+        })
 
-        # Display object counts
-        st.write("Detected Objects (Image Upload):")
-        for label, count in object_counts.items():
-            if count > 0:
-                st.write(f"{label}: {count}")
+    app.run(port=5000)
+
+if __name__ == "__main__":
+    handle_frame()
+

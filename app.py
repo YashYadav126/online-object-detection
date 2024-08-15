@@ -4,8 +4,9 @@ import numpy as np
 from PIL import Image
 
 # Paths to the model files
-prototxt_path = 'D:/streamlit/deploy.prototxt'
-caffemodel_path = 'D:/streamlit/mobilenet_iter_73000.caffemodel'
+prototxt_path = 'deploy.prototxt'
+caffemodel_path = 'mobilenet_iter_73000.caffemodel'
+
 
 # Load the pre-trained MobileNet SSD model
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)

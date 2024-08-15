@@ -4,8 +4,8 @@ import numpy as np
 from PIL import Image
 
 # Paths to the model files
-prototxt_path = 'deploy.prototxt'
-caffemodel_path = 'mobilenet_iter_73000.caffemodel'
+prototxt_path = 'D:/streamlit/deploy.prototxt'
+caffemodel_path = 'D:/streamlit/mobilenet_iter_73000.caffemodel'
 
 # Load the pre-trained MobileNet SSD model
 net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
@@ -22,9 +22,9 @@ st.title("Enhanced Object Detection")
 
 # Sidebar
 st.sidebar.header("Settings")
-option = st.sidebar.selectbox("Choose an Option", ["Video Upload", "Image Upload"])
+option = st.sidebar.selectbox("Choose an Option", ["Webcam Detection", "Image Upload"])
 
-# Create placeholders for video frames and object counts
+# Create a placeholder for video frames and object counts
 stframe = st.empty()
 count_placeholder = st.empty()
 
@@ -54,46 +54,51 @@ def detect_objects(frame):
 
     return frame, object_counts
 
-if option == "Video Upload":
-    st.sidebar.write("## Video Upload")
+if option == "Webcam Detection":
+    st.sidebar.write("## Webcam Detection")
+    
+    if st.sidebar.button("Start Webcam"):
+        cap = cv2.VideoCapture(0)  # Open webcam
+        
+        if not cap.isOpened():
+            st.error("Error: Could not open webcam.")
+        else:
+            st.write("Webcam started. Click 'Stop Webcam' to stop.")
+            count_placeholder.write("Detected Objects (Webcam):")
 
-    uploaded_video = st.file_uploader("Upload a Video", type=["mp4", "avi", "mov"])
+            # Button to stop webcam
+            if st.sidebar.button("Stop Webcam"):
+                st.write("Stopping webcam...")
+                cap.release()
+                stframe.empty()
+                count_placeholder.empty()
+            else:
+                # Loop to read frames from the webcam
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        st.warning("Warning: Could not read frame from webcam.")
+                        break
 
-    if uploaded_video is not None:
-        # Save the uploaded video to a temporary file
-        video_temp_path = 'temp_video.mp4'
-        with open(video_temp_path, 'wb') as f:
-            f.write(uploaded_video.read())
+                    # Detect objects
+                    frame, object_counts = detect_objects(frame)
 
-        # Open the video file using OpenCV
-        cap = cv2.VideoCapture(video_temp_path)
+                    # Convert the image from BGR to RGB for Streamlit
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        stframe = st.empty()
+                    # Display the resulting frame in Streamlit
+                    stframe.image(frame_rgb, channels="RGB")
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+                    # Display object counts
+                    count_placeholder.write("Detected Objects (Webcam):")
+                    for label, count in object_counts.items():
+                        if count > 0:
+                            count_placeholder.write(f"{label}: {count}")
 
-            # Detect objects
-            frame, object_counts = detect_objects(frame)
-
-            # Convert the image from BGR to RGB for Streamlit
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # Display the resulting frame in Streamlit
-            stframe.image(frame_rgb, channels="RGB")
-
-            # Display object counts
-            count_placeholder.write("Detected Objects (Video):")
-            for label, count in object_counts.items():
-                if count > 0:
-                    count_placeholder.write(f"{label}: {count}")
-
-        # Release the capture
-        cap.release()
-        stframe.empty()
-        count_placeholder.empty()
+                # Release the capture
+                cap.release()
+                stframe.empty()
+                count_placeholder.empty()
 
 elif option == "Image Upload":
     st.sidebar.write("## Image Upload")
@@ -119,4 +124,3 @@ elif option == "Image Upload":
         for label, count in object_counts.items():
             if count > 0:
                 st.write(f"{label}: {count}")
-
